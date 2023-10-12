@@ -89,33 +89,62 @@ class TCPServer:
             receive_thread = threading.Thread(target=self.handler, args=(client, client_key))
             receive_thread.start();
 
+    # 指定バイト数分ずつ読み込んで,Socketからパケットを取得する
+    def read_packets(self, client) -> str:
+        packets = b"";
+        while True:
+            data = client.recv(BUFFER_SIZE)
+            packets += data;
+            if len(data) < BUFFER_SIZE:
+                break
+        # client socketからの戻り値は bytes型なのでstr型に変換する
+        decoded_packets = packets.decode("utf-8");
+        return decoded_packets
+
     def handler(self, client, client_key):
+
+        while True:
+            # clientへwelcomeメッセージを送信する
+            client.send(bytes("最初にあなたの名前を入力して下さい", encoding="utf-8"));
+            # clientからの入力を受け取る
+            user_name = self.read_packets(client)
+            # 入力内容が空でない場合
+            if len(user_name) > 0:
+                question_message = "あなたの名前は[{}]ですか?  <yes or no>".format(user_name);
+                print(question_message);
+                client.send(bytes(question_message, encoding="utf-8"))
+                # yes or noの入力を受け取る
+                answer = self.read_packets(client);
+                print("受け取った回答[{}]".format(answer))
+                if answer == "yes":
+                    print("ユーザー名を確定しました");
+                    break;
+        # clientのユーザー名を一旦出力
+        print("接続したユーザー名は[{}]です".format(user_name));
+        client.send(bytes("[{}]さん,TCPサーバーへようこそ".format(user_name), encoding="utf-8"));
+
+        # 当該ユーザーが他ユーザーにログインしたことを通知する
+        # Socketからの初回メッセージの場合は
+        # 取得したメッセージをユーザー名として扱う
+        if not self.__accepted_user_names.get(client_key):
+            self.__accepted_user_names[client_key] = user_name;
+        self.broadcast_message(client_key, "[{}]さんが入室しました".format(user_name))
+
         while True:
             # 小分けにして受け取ったパケットを結合するため
-            packets = b"";
-            while True:
-                data = client.recv(BUFFER_SIZE)
-                packets += data;
-                # 読み取ったパケットサイズが指定サイズより小さい場合
-                # SocketのEOFとする
-                if len(data) < BUFFER_SIZE:
-                    break;
-
-            # Socketから受信したデータはバイト列なのでstr型に変換する
-            packets = packets.decode("utf-8");
-            # Socketからの初回メッセージの場合は
-            # 取得したメッセージをユーザー名として扱う
-            if not self.__accepted_user_names.get(client_key):
-                self.__accepted_user_names[client_key] = packets
-                packets = "[{}]さんが入室しました".format(packets)
-
-            for key, value in self.__accepted_sockets.items():
-                if key == client_key:
-                    continue;
-                # 自分以外のSocketクライアントにメッセージを送信する
-                user_name = self.__accepted_user_names[client_key];
-                broadcasted_packets = "[{}]:{}".format(user_name, packets, );
-                value.send(bytes(broadcasted_packets, encoding="utf-8"));
+            packets = self.read_packets(client);
+            self.broadcast_message(client_key, packets);
+            
+    # 特定のユーザーの発言を他のユーザーにブロードキャストする
+    def broadcast_message(self, client_key, packets):
+        for key, client in self.__accepted_sockets.items():
+            # 自分のSocketクライアントにはメッセージを送信しない
+            if key == client_key:
+                continue;
+            # 自分以外のSocketクライアントにメッセージを送信する
+            user_name = self.__accepted_user_names[client_key];
+            broadcasted_packets = "[{}]さん:{}".format(user_name, packets, );
+            client.send(bytes(broadcasted_packets, encoding="utf-8"));
 
 
 tcp_server = TCPServer(server_host, server_port, server_backlog)
