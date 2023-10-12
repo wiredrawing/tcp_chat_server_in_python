@@ -128,23 +128,28 @@ class TCPServer:
         # 取得したメッセージをユーザー名として扱う
         if not self.__accepted_user_names.get(client_key):
             self.__accepted_user_names[client_key] = user_name;
+
         self.broadcast_message(client_key, "[{}]さんが入室しました".format(user_name))
 
         while True:
             # 小分けにして受け取ったパケットを結合するため
             packets = self.read_packets(client);
             self.broadcast_message(client_key, packets);
-            
+
     # 特定のユーザーの発言を他のユーザーにブロードキャストする
     def broadcast_message(self, client_key, packets):
-        for key, client in self.__accepted_sockets.items():
+        print("broadcast_message スタート");
+        print(self.__accepted_sockets);
+        for key, value in self.__accepted_sockets.items():
+            print(key);
+            print(value);
             # 自分のSocketクライアントにはメッセージを送信しない
             if key == client_key:
                 continue;
             # 自分以外のSocketクライアントにメッセージを送信する
             user_name = self.__accepted_user_names[client_key];
             broadcasted_packets = "[{}]さん:{}".format(user_name, packets, );
-            client.send(bytes(broadcasted_packets, encoding="utf-8"));
+            value.send(bytes(broadcasted_packets, encoding="utf-8"));
 
 
 tcp_server = TCPServer(server_host, server_port, server_backlog)
