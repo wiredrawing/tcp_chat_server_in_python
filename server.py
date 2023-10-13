@@ -1,5 +1,6 @@
 import socket;
 import threading;
+import json
 
 # クライアントからメッセージを受信するバイトサイズ
 BUFFER_SIZE = 16
@@ -148,8 +149,14 @@ class TCPServer:
                 continue;
             # 自分以外のSocketクライアントにメッセージを送信する
             user_name = self.__accepted_user_names[client_key];
-            broadcasted_packets = "[{}]さん:{}".format(user_name, packets, );
-            value.send(bytes(broadcasted_packets, encoding="utf-8"));
+            json_packets = json.dumps({
+                client_key: {
+                    'user_name': user_name,
+                    "packets": packets,
+                }
+            });
+            print(json_packets);
+            value.send(bytes(json_packets, encoding="utf-8"));
 
 
 tcp_server = TCPServer(server_host, server_port, server_backlog)

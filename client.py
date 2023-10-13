@@ -1,6 +1,7 @@
 import socket;
 import threading;
 import sys
+import json
 
 BUFFER_SIZE = 16
 
@@ -19,15 +20,28 @@ client.connect((server_host, server_port));
 
 
 # サーバー側からメッセージを受信する
-def read_packets_from_server(__client):
-    while True:
-        packets = b"";
+def read_packets_from_server(_client_):
+    try:
         while True:
-            data = __client.recv(BUFFER_SIZE);
-            packets += data;
-            if len(data) < BUFFER_SIZE:
-                break;
-        print(packets.decode("utf-8"))
+            packets = b"";
+            while True:
+                data = _client_.recv(BUFFER_SIZE);
+                packets += data;
+                if len(data) < BUFFER_SIZE:
+                    break;
+
+            try:
+                decoded_packets = json.loads(packets.decode("utf-8"));
+                for index, value in decoded_packets.items():
+                    print("{}: {}".format(value["user_name"],value["packets"]));
+            except Exception as e:
+                # 受信したパケットがただしいjson形式でない場合
+                print(e);
+                print(packets.decode("utf-8"))
+
+    except Exception as e:
+        print(e)
+
 
 
 # サーバー側にメッセージを送信する
