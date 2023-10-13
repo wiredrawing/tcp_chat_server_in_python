@@ -91,7 +91,8 @@ class TCPServer:
             receive_thread.start();
 
     # 指定バイト数分ずつ読み込んで,Socketからパケットを取得する
-    def read_packets(self, client) -> str:
+    @staticmethod
+    def read_packets(client) -> str:
         packets = b"";
         while True:
             data = client.recv(BUFFER_SIZE)
@@ -106,20 +107,21 @@ class TCPServer:
 
         while True:
             # clientへwelcomeメッセージを送信する
-            client.send(bytes("最初にあなたの名前を入力して下さい", encoding="utf-8"));
+            client.send(bytes("\r\n最初にあなたの名前を入力して下さい", encoding="utf-8"));
             # clientからの入力を受け取る
-            user_name = self.read_packets(client)
+            user_name = TCPServer.read_packets(client)
             # 入力内容が空でない場合
             if len(user_name) > 0:
                 question_message = "あなたの名前は[{}]ですか?  <yes or no>".format(user_name);
                 print(question_message);
                 client.send(bytes(question_message, encoding="utf-8"))
                 # yes or noの入力を受け取る
-                answer = self.read_packets(client);
+                answer = TCPServer.read_packets(client);
                 print("受け取った回答[{}]".format(answer))
                 if answer == "yes":
                     print("ユーザー名を確定しました");
                     break;
+
         # clientのユーザー名を一旦出力
         print("接続したユーザー名は[{}]です".format(user_name));
         client.send(bytes("[{}]さん,TCPサーバーへようこそ".format(user_name), encoding="utf-8"));
@@ -134,29 +136,32 @@ class TCPServer:
 
         while True:
             # 小分けにして受け取ったパケットを結合するため
-            packets = self.read_packets(client);
+            packets = TCPServer.read_packets(client);
             self.broadcast_message(client_key, packets);
 
     # 特定のユーザーの発言を他のユーザーにブロードキャストする
     def broadcast_message(self, client_key, packets):
         print("broadcast_message スタート");
         print(self.__accepted_sockets);
-        for key, value in self.__accepted_sockets.items():
-            print(key);
-            print(value);
+        for key in list(self.__accepted_sockets):
             # 自分のSocketクライアントにはメッセージを送信しない
             if key == client_key:
                 continue;
             # 自分以外のSocketクライアントにメッセージを送信する
             user_name = self.__accepted_user_names[client_key];
-            json_packets = json.dumps({
-                client_key: {
-                    'user_name': user_name,
-                    "packets": packets,
-                }
-            });
-            print(json_packets);
-            value.send(bytes(json_packets, encoding="utf-8"));
+
+            # パケットは\r\n(改行)区切りで送信する
+            # 偶数行は発信者名,奇数行は発言内容とする
+            packets = "{}\r\n{}\r\n".format(user_name, packets);
+            try:
+                self.__accepted_sockets[key].send(bytes(packets, encoding="utf-8"));
+            except Exception as e:
+                print(e);
+                # 接続済み配列から現ループのkeyを削除する
+                del self.__accepted_sockets[key];
+                del self.__accepted_user_names[key];
+
+
 
 
 tcp_server = TCPServer(server_host, server_port, server_backlog)

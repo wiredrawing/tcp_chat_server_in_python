@@ -19,6 +19,18 @@ client = socket.socket();
 client.connect((server_host, server_port));
 
 
+# 配列を指定数分に分割する
+def split_list(target, number):
+    """
+    配列を指定数分に分割
+    :param target:
+    :param number:
+    :return:
+    """
+    for index in range(0, len(target), number):
+        yield target[index:index + number]
+
+
 # サーバー側からメッセージを受信する
 def read_packets_from_server(_client_):
     try:
@@ -30,18 +42,16 @@ def read_packets_from_server(_client_):
                 if len(data) < BUFFER_SIZE:
                     break;
 
-            try:
-                decoded_packets = json.loads(packets.decode("utf-8"));
-                for index, value in decoded_packets.items():
-                    print("{}: {}".format(value["user_name"],value["packets"]));
-            except Exception as e:
-                # 受信したパケットがただしいjson形式でない場合
-                print(e);
-                print(packets.decode("utf-8"))
-
+            # 受信したパケットは\r\n文字で分割する
+            packets = packets.decode("utf-8").split("\r\n");
+            packets = list(split_list(packets, 2));
+            for index, value in enumerate(packets):
+                for innder_index, innder_value in enumerate(value):
+                    print(innder_value);
+            # for index, value in packets:
+            #     print("{}: {}".format(value["user_name"], value["packets"]));
     except Exception as e:
         print(e)
-
 
 
 # サーバー側にメッセージを送信する
