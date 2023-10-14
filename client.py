@@ -1,7 +1,6 @@
 import socket;
 import threading;
 import sys
-import json
 
 BUFFER_SIZE = 16
 
@@ -15,8 +14,13 @@ if len(arguments) < 3:
 (server_host, server_port) = (arguments[1], int(arguments[2]));
 
 # サーバー側のソケットを作成
-client = socket.socket();
-client.connect((server_host, server_port));
+try:
+
+    client = socket.socket();
+    client.setblocking(False);
+    client.connect((server_host, server_port));
+except Exception as e:
+    print(e);
 
 
 # 配列を指定数分に分割する
@@ -37,10 +41,20 @@ def read_packets_from_server(_client_):
         while True:
             packets = b"";
             while True:
-                data = _client_.recv(BUFFER_SIZE);
-                packets += data;
-                if len(data) < BUFFER_SIZE:
-                    break;
+                try:
+                    # socketをノンブロッキングに設定する
+                    _client_.setblocking(False)
+                    data = _client_.recv(BUFFER_SIZE)
+                    packets += data;
+                    if len(data) == 0:
+                        break;
+                    if len(data) < BUFFER_SIZE:
+                        break
+                except Exception as e:
+                    # ノンブロッキングの場合は例外がスローされるため
+                    # 例外発生時 == 読み込み完了とする
+                    if len(packets) > 0:
+                        break;
 
             # 受信したパケットは\r\n文字で分割する
             packets = packets.decode("utf-8").split("\r\n");
@@ -48,8 +62,6 @@ def read_packets_from_server(_client_):
             for index, value in enumerate(packets):
                 for innder_index, innder_value in enumerate(value):
                     print(innder_value);
-            # for index, value in packets:
-            #     print("{}: {}".format(value["user_name"], value["packets"]));
     except Exception as e:
         print(e)
 
