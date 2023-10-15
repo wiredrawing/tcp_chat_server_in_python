@@ -1,3 +1,4 @@
+import select
 import socket;
 import threading;
 import sys
@@ -67,7 +68,7 @@ class TCPServer:
         while True:
             print("[クライアントを受付中...]");
             (client, address) = self.__server.accept();
-            client.setblocking(False)
+            # client.setblocking(False)
             client_key = "{}:{}".format(address[0], address[1])
             self.__accepted_sockets[client_key] = client
 
@@ -79,21 +80,30 @@ class TCPServer:
     @staticmethod
     def read_packets(client) -> str:
         packets = b"";
-        while True:
-            try:
-                # socketをノンブロッキングに設定する
-                client.setblocking(False)
-                data = client.recv(BUFFER_SIZE)
-                packets += data;
-                if len(data) == 0:
-                    break;
-                if len(data) < BUFFER_SIZE:
-                    break
-            except Exception as e:
-                # ノンブロッキングの場合は例外がスローされるため
-                # 例外発生時 == 読み込み完了とする
-                if len(packets) > 0:
-                    break;
+        # while True:
+
+        number = select.select([client], [], []);
+        print(number);
+        read_list = number[0];
+
+        for read in read_list:
+            while True:
+                try:
+                    # socketをノンブロッキングに設定する
+                    read.setblocking(False)
+                    data = read.recv(BUFFER_SIZE)
+                    packets += data;
+                    if len(data) == 0:
+                        break;
+                    if len(data) < BUFFER_SIZE:
+                        break
+                except BlockingIOError as e:
+                    print("BlockingIOErrorが発生しました");
+                    print("読み取り完了です")
+                    # ノンブロッキングの場合は例外がスローされるため
+                    # 例外発生時 == 読み込み完了とする
+                    if len(packets) > 0:
+                        break;
 
         # client socketからの戻り値は bytes型なのでstr型に変換する
         decoded_packets = packets.decode("utf-8");
