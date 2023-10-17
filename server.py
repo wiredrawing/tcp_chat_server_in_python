@@ -67,10 +67,14 @@ class TCPServer:
     def run_server(self):
         while True:
             print("[クライアントを受付中...]");
+            print(">> 現在接続中クライアント一覧");
+            for key in list(self.__accepted_user_names):
+                print("Socket名[{}],ユーザー名[{}]".format(key, self.__accepted_user_names[key]))
+            print(">> 接続中クライアント一覧終了");
+
             (client, address) = self.__server.accept();
-            # client.setblocking(False)
             client_key = "{}:{}".format(address[0], address[1])
-            self.__accepted_sockets[client_key] = client
+
 
             # スレッドを新規作成して,メインスレッドのブロックを防ぐ
             receive_thread = threading.Thread(target=self.handler, args=(client, client_key))
@@ -98,13 +102,15 @@ class TCPServer:
                     if len(data) < BUFFER_SIZE:
                         break
                 except BlockingIOError as e:
-                    print("BlockingIOErrorが発生しました");
+                    print("★BlockingIOErrorが発生しました");
                     print("読み取り完了です")
                     # ノンブロッキングの場合は例外がスローされるため
                     # 例外発生時 == 読み込み完了とする
                     if len(packets) > 0:
                         break;
 
+            # データ受信時以外はノンブロッキングを解除する
+            read.setblocking(True)
         # client socketからの戻り値は bytes型なのでstr型に変換する
         decoded_packets = packets.decode("utf-8");
         return decoded_packets
@@ -156,11 +162,12 @@ class TCPServer:
 
         client.send(bytes("[{}]さん,TCPサーバーへようこそ".format(user_name), encoding="utf-8"));
 
-        # 当該ユーザーが他ユーザーにログインしたことを通知する
-        # Socketからの初回メッセージの場合は
-        # 取得したメッセージをユーザー名として扱う
+        # (1).当該ユーザーが他ユーザーにログインしたことを通知する.
+        # (2).Socketからの初回メッセージの場合は取得したメッセージをユーザー名として扱う.
+        # (3).名前を確定したら,サーバーのメンバにSocketオブジェクトと名前を追加する
         if not self.__accepted_user_names.get(client_key):
             self.__accepted_user_names[client_key] = user_name;
+            self.__accepted_sockets[client_key] = client
 
         self.broadcast_message(client_key, "[{}]さんが入室しました".format(user_name))
 
@@ -176,6 +183,7 @@ class TCPServer:
         print("broadcast_message スタート");
         print(self.__accepted_sockets);
         for key in list(self.__accepted_sockets):
+            # 送信したいパケットを初期化
             # 自分のSocketクライアントにはメッセージを送信しない
             if key == client_key:
                 continue;
@@ -184,11 +192,11 @@ class TCPServer:
 
             # パケットは\r\n(改行)区切りで送信する
             # 偶数行は発信者名,奇数行は発言内容とする
-            packets = "{}\r\n{}\r\n".format(user_name, packets);
+            initial_packets = "{}\r\n{}\r\n".format(user_name, packets);
             try:
                 # client側から意図的に接続をきられた場合は例外がスローされるため
                 # その場合は接続済み配列から現ループのkeyを削除する
-                self.__accepted_sockets[key].send(bytes(packets, encoding="utf-8"));
+                self.__accepted_sockets[key].send(bytes(initial_packets, encoding="utf-8"));
                 # 送信した後に空文字を送信することで
                 # クライアント側のrecv()メソッドのブロックを解除する
                 self.__accepted_sockets[key].send(bytes("", encoding="utf-8"));

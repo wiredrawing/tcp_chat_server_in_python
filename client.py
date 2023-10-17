@@ -27,7 +27,6 @@ def read_packets_from_server(_client_):
         for read in read_list:
             while True:
                 try:
-                    # socketをノンブロッキングに設定する
                     read.setblocking(False)
                     data = read.recv(BUFFER_SIZE)
                     # print(data);
@@ -44,6 +43,8 @@ def read_packets_from_server(_client_):
                     if len(packets) > 0:
                         break;
 
+            # データ受信時以外はノンブロッキングを解除する
+            read.setblocking(True)
         if len(packets) > 0:
             # 受信したパケットは\r\n文字で分割する
             packets = packets.decode("utf-8").split("\r\n");
@@ -61,23 +62,23 @@ def send_packets_to_server(__client):
             __client.send(temp.encode("utf-8"));
 
 
-if __name__== "__main__":
+if __name__ == "__main__":
     BUFFER_SIZE = 16
 
     # 実行時のコマンドライン引数からサーバー側のIPアドレスとポート番号を指定
     arguments = sys.argv;
-    if len(arguments) < 3:
-        print("Please specify the port number");
-        exit();
+    if len(arguments) < 2:
+        server_host = "127.0.0.1"
+        server_port = 11180
+    else:
 
-    # 分割代入
-    (server_host, server_port) = (arguments[1], int(arguments[2]));
+        # 分割代入
+        (server_host, server_port) = (arguments[1], int(arguments[2]));
 
     # サーバー側のソケットを作成
     try:
 
         client = socket.socket();
-        # client.setblocking(False);
         client.connect((server_host, server_port));
         # スレッドの作成
         read_thread = threading.Thread(target=read_packets_from_server, args=(client,));
