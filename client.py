@@ -36,12 +36,14 @@ def read_packets_from_server(_client_):
                         break;
                     if len(data) < BUFFER_SIZE:
                         break
-                except Exception as e:
+                except BlockingIOError as e:
                     print(type(e))
                     # ノンブロッキングの場合は例外がスローされるため
                     # 例外発生時 == 読み込み完了とする
                     if len(packets) > 0:
                         break;
+                except Exception:
+                    break;
 
             # データ受信時以外はノンブロッキングを解除する
             read.setblocking(True)
@@ -49,6 +51,8 @@ def read_packets_from_server(_client_):
             # 受信したパケットは\r\n文字で分割する
             packets = packets.decode("utf-8").split("\r\n");
             packets = list(split_list(packets, 2));
+            # サーバーからのメッセージは一度コマンドラインを改行させる
+            print("", end="\r\n")
             for index, value in enumerate(packets):
                 for innder_index, innder_value in enumerate(value):
                     print(innder_value);

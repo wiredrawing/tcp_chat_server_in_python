@@ -27,6 +27,9 @@ def server_report(function):
 
 class TCPServer:
 
+    # サーバー側で生成したスレッドを保持
+    # {socket name : thread}
+    __thread_list = {};
     def __init__(self, host, port, backlog):
         self.__server_host = host
         self.__server_port = port
@@ -75,10 +78,9 @@ class TCPServer:
             (client, address) = self.__server.accept();
             client_key = "{}:{}".format(address[0], address[1])
 
-
             # スレッドを新規作成して,メインスレッドのブロックを防ぐ
-            receive_thread = threading.Thread(target=self.handler, args=(client, client_key))
-            receive_thread.start();
+            self.__thread_list[client_key] = threading.Thread(target=self.handler, args=(client, client_key))
+            self.__thread_list[client_key].start();
 
     # 指定バイト数分ずつ読み込んで,Socketからパケットを取得する
     @staticmethod
@@ -87,7 +89,6 @@ class TCPServer:
         # while True:
 
         number = select.select([client], [], []);
-        print(number);
         read_list = number[0];
 
         for read in read_list:
@@ -216,5 +217,5 @@ class TCPServer:
 
 if __name__ == "__main__":
     tcp_server = TCPServer(server_host, server_port, server_backlog)
-    tcp_server.make_server();
+    tcp_server.make_server()
     tcp_server.run_server()
