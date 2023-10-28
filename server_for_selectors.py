@@ -60,6 +60,10 @@ class TCPServer:
     def accepted_temp_user_names(self):
         return self.__accepted_temp_user_names
 
+    @property
+    def selector(self):
+        return self.__selector
+
     @server_report
     def make_server(self):
         """
@@ -89,72 +93,77 @@ class TCPServer:
     def run_server(self):
         while True:
 
-            # 二分ごとに,接続中のクライアント一覧を表示する
-            if int(time.time()) % 10 == 0:
-                sys.stdout.write("\r" + str(int(time.time())));
-
-            self.__server.setblocking(False);
-            # サーバーへ接続したクライアントをselectors.DefaultSelector()で監視する
             try:
-                (client, address) = self.__server.accept();
-                # クライアントに名前を入力する旨のメッセージを送信する
-                client.send(bytes("最初にあなたの名前を入力して下さい", encoding="utf-8"));
-                client_key = TCPServer.fetch_socket_identify(client);
-                self.__accepted_sockets[client_key] = client;
-                # 監視対象に追加する
-                selector_key = self.__selector.register(client, selectors.EVENT_READ, client_key)
-                print("監視対象に追加:{}".format(selector_key));
-            except BlockingIOError as e:
-                print("{}が発生しました".format(type(e)));
+                # 二分ごとに,接続中のクライアント一覧を表示する
+                if int(time.time()) % 10 == 0:
+                    sys.stdout.write("\r" + str(int(time.time())));
 
-            # クライアントからのSocketの読み取りイベントを監視する
-            while True:
-                if len(self.__accepted_sockets) == 0:
-                    # print("接続中のクライアントがいないため,監視を終了します");
-                    break;
+                self.__server.setblocking(False);
+                # サーバーへ接続したクライアントをselectors.DefaultSelector()で監視する
+                try:
+                    (client, address) = self.__server.accept();
+                    # クライアントに名前を入力する旨のメッセージを送信する
+                    client.send(bytes("最初にあなたの名前を入力して下さい", encoding="utf-8"));
+                    client_key = TCPServer.fetch_socket_identify(client);
+                    self.accepted_sockets[client_key] = client;
+                    # 監視対象に追加する
+                    selector_key = self.selector.register(client, selectors.EVENT_READ, client_key)
+                    print("監視対象に追加:{}".format(selector_key));
+                except BlockingIOError as e:
+                    print("{}が発生しました".format(type(e)));
 
-                # シングルスレッドでやる以上タイムアウトの設定は必須
-                active_list = self.__selector.select(3);
+                # クライアントからのSocketの読み取りイベントを監視する
+                while True:
+                    if len(self.accepted_sockets) == 0:
+                        # print("接続中のクライアントがいないため,監視を終了します");
+                        break;
 
-                # イベントが発生したSocketを取得する
-                for active_key, mask in active_list:
-                    active_socket = active_key.fileobj;
+                    # シングルスレッドでやる以上タイムアウトの設定は必須
+                    active_list = self.selector.select(3);
 
-                    # IDEの都合上,型チェックを実行
-                    if not isinstance(active_socket, socket.socket):
-                        print("active_socketがsocket.socket型ではありません");
-                        continue;
+                    # イベントが発生したSocketを取得する
+                    for active_key, mask in active_list:
+                        active_socket = active_key.fileobj;
 
-                    client_key = TCPServer.fetch_socket_identify(active_socket);
+                        # IDEの都合上,型チェックを実行
+                        if not isinstance(active_socket, socket.socket):
+                            print("active_socketがsocket.socket型ではありません");
+                            continue;
 
-                    # クライアントからのパケットを読み込む
-                    total_packets = TCPServer.read_packets(active_socket)
+                        client_key = TCPServer.fetch_socket_identify(active_socket);
 
-                    # まだクライアントのアカウント名が取得できていない場合
-                    if client_key not in self.__accepted_user_names.keys():
-                        if client_key in self.__accepted_temp_user_names.keys():
-                            if total_packets.decode("utf-8") == "yes":
-                                account_name = self.__accepted_temp_user_names[client_key];
-                                total_packets = bytes("{}さんが入室しました。".format(account_name), encoding="utf-8");
-                                # クライアントのアカウント名を保存する
-                                self.__accepted_user_names[client_key] = account_name
-                                # 一時保存していたアカウント名を削除する
-                                del self.__accepted_temp_user_names[client_key];
+                        # クライアントからのパケットを読み込む
+                        total_packets = TCPServer.read_packets(active_socket)
+
+                        # まだクライアントのアカウント名が取得できていない場合
+                        if client_key not in self.__accepted_user_names.keys():
+                            if client_key in self.__accepted_temp_user_names.keys():
+                                if total_packets.decode("utf-8") == "yes":
+                                    account_name = self.__accepted_temp_user_names[client_key];
+                                    total_packets = bytes("{}さんが入室しました。".format(account_name), encoding="utf-8");
+                                    # クライアントのアカウント名を保存する
+                                    self.__accepted_user_names[client_key] = account_name
+                                    # 一時保存していたアカウント名を削除する
+                                    del self.__accepted_temp_user_names[client_key];
+                                else:
+                                    # クライアントに名前を入力する旨のメッセージを送信する
+                                    active_socket.send(bytes("名前の入力は必須項目です。", encoding="utf-8"));
+                                    del self.__accepted_temp_user_names[client_key];
+                                    continue;
                             else:
-                                # クライアントに名前を入力する旨のメッセージを送信する
-                                active_socket.send(bytes("名前の入力は必須項目です。", encoding="utf-8"));
-                                del self.__accepted_temp_user_names[client_key];
-                                continue;
-                        else:
-                            account_name = total_packets.decode("utf-8");
-                            self.__accepted_temp_user_names[client_key] = account_name;
-                            active_socket.send(bytes("あなたの名前は[{}]さんでよろしいですか? <yes or no>".format(account_name), encoding="utf-8"));
-                            continue
+                                account_name = total_packets.decode("utf-8");
+                                self.__accepted_temp_user_names[client_key] = account_name;
+                                active_socket.send(bytes("あなたの名前は[{}]さんでよろしいですか? <yes or no>".format(account_name), encoding="utf-8"));
+                                continue
 
-                    print("Start broadcast.")
-                    # broadcastを実行
-                    self.broadcast_message(client_key, total_packets)
-                break;
+                        print("Start broadcast.")
+                        # broadcastを実行
+                        self.broadcast_message(client_key, total_packets)
+                    break;
+            except Exception as e:
+                # 例外が発生した場合は,アプリケーションを終了する
+                print("Fatal Error has occurred.")
+                exit(-1);
 
     @staticmethod
     def read_packets(client) -> bytes:
@@ -190,39 +199,6 @@ class TCPServer:
                 break;
         return total_packets
 
-    # # 指定バイト数分ずつ読み込んで,Socketからパケットを取得する
-    # @staticmethod
-    # def read_packets(client) -> str:
-    #     packets = b"";
-    #     # while True:
-    # 
-    #     number = select.select([client], [], []);
-    #     read_list = number[0];
-    # 
-    #     for read in read_list:
-    #         while True:
-    #             try:
-    #                 # socketをノンブロッキングに設定する
-    #                 read.setblocking(False)
-    #                 data = read.recv(BUFFER_SIZE)
-    #                 packets += data;
-    #                 if len(data) == 0:
-    #                     break;
-    #                 if len(data) < BUFFER_SIZE:
-    #                     break
-    #             except BlockingIOError as e:
-    #                 print("★BlockingIOErrorが発生しました");
-    #                 print("読み取り完了です")
-    #                 # ノンブロッキングの場合は例外がスローされるため
-    #                 # 例外発生時 == 読み込み完了とする
-    #                 if len(packets) > 0:
-    #                     break;
-    # 
-    #         # データ受信時以外はノンブロッキングを解除する
-    #         read.setblocking(True)
-    #     # client socketからの戻り値は bytes型なのでstr型に変換する
-    #     decoded_packets = packets.decode("utf-8");
-    #     return decoded_packets
 
     @staticmethod
     def fetch_user_name(client, client_key):
@@ -261,8 +237,8 @@ class TCPServer:
     def broadcast_message(self, client_key, packets) -> int:
         """
         発言者以外の全クライアントにメッセージを送信する
-        :param client_key:
-        :param packets:
+        :param client_key: 発言者の識別名
+        :param packets: 発言者の発言内容
         :return:
         """
         print("Start broadcast to clients that are alive.")
